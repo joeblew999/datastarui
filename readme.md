@@ -24,6 +24,8 @@ See [datastar-ui.com](https://datastar-ui.com) for component demos.
 - [Bun](https://bun.sh/docs/installation) runtime (`brew install oven-sh/bun/bun`)
 - [Tailwind CSS CLI](https://tailwindcss.com/blog/standalone-cli) (`brew install tailwindcss/tap/tailwindcss`)
 
+
+> Note: legacy `just` targets from upstream were recreated as Go commands (`cmd/codegen` and `cmd/playwright`) so the workflow is self-contained without requiring the Just runner or Docker.
 ### Development Setup (Bun-driven)
 
 ```bash

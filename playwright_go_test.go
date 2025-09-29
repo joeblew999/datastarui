@@ -24,12 +24,13 @@ func TestPlaywrightSuite(t *testing.T) {
 		t.Fatalf("locate repo directory: %v", err)
 	}
 
+	cfg := pw.DefaultConfig()
+	t.Setenv("PLAYWRIGHT_BASE_URL", cfg.BaseURL)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	t.Setenv("PLAYWRIGHT_BASE_URL", "http://localhost:4242")
-
-	if err := pw.Run(ctx, repoDir); err != nil {
+	if err := pw.Run(ctx, repoDir, cfg); err != nil {
 		t.Fatalf("playwright suite failed: %v", err)
 	}
 }

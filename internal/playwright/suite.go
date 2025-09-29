@@ -14,27 +14,50 @@ import (
 	"time"
 )
 
+// Config captures the paths and commands required to run the workflow.
+type Config struct {
+	TailwindInput   string
+	TailwindOutput  string
+	TailwindContent []string
+	Binary          string
+	ServerCommand   []string
+	BaseURL         string
+}
+
+// DefaultConfig returns the conventions used by the DatastarUI fork.
+func DefaultConfig() Config {
+	return Config{
+		TailwindInput:   "static/css/index.css",
+		TailwindOutput:  "static/css/out.css",
+		TailwindContent: []string{"./components/**/*", "./pages/**/*", "./layouts/**/*"},
+		Binary:          "datastarui",
+		ServerCommand:   nil,
+		BaseURL:         "http://localhost:4242",
+	}
+}
+
 // Run executes the full Bun-based Playwright workflow against the provided repo directory.
-func Run(ctx context.Context, repoDir string) error {
-	if err := Prepare(ctx, repoDir); err != nil {
+func Run(ctx context.Context, repoDir string, cfg Config) error {
+	if err := Prepare(ctx, repoDir, cfg); err != nil {
 		return err
 	}
 
-	srvCmd, err := startServer(ctx, repoDir)
+	srvCmd, err := startServer(ctx, repoDir, cfg)
 	if err != nil {
 		return fmt.Errorf("start server: %w", err)
 	}
 	defer stopServer(srvCmd)
 
-	if err := waitForHTTP("http://localhost:4242", 30*time.Second); err != nil {
+	if err := waitForHTTP(cfg.BaseURL, 30*time.Second); err != nil {
 		return fmt.Errorf("wait for server: %w", err)
 	}
 
-	if err := runCmd(ctx, repoDir, nil, "bun", "x", "playwright", "install"); err != nil {
+	if err := runCmd(ctx, repoDir, os.Environ(), "bun", "x", "playwright", "install"); err != nil {
 		return fmt.Errorf("playwright install failed: %w", err)
 	}
 
-	if err := runCmd(ctx, repoDir, nil, "bun", "x", "playwright", "test"); err != nil {
+	env := append(os.Environ(), fmt.Sprintf("PLAYWRIGHT_BASE_URL=%s", cfg.BaseURL))
+	if err := runCmd(ctx, repoDir, env, "bun", "x", "playwright", "test"); err != nil {
 		return fmt.Errorf("playwright suite failed: %w", err)
 	}
 
@@ -42,48 +65,49 @@ func Run(ctx context.Context, repoDir string) error {
 }
 
 // Prepare installs dependencies, regenerates templates, rebuilds Tailwind output, and ensures the Go binary is up to date.
-func Prepare(ctx context.Context, repoDir string) error {
-	steps := []struct {
-		name string
-		run  func(context.Context, string) error
-	}{
-		{"bun install", runBunInstall},
-		{"templ generate", runTemplGenerate},
-		{"tailwind rebuild", rebuildTailwind},
-		{"go build", runGoBuild},
+func Prepare(ctx context.Context, repoDir string, cfg Config) error {
+	if err := runBunInstall(ctx, repoDir); err != nil {
+		return fmt.Errorf("bun install failed: %w", err)
 	}
 
-	for _, step := range steps {
-		if err := step.run(ctx, repoDir); err != nil {
-			return fmt.Errorf("%s failed: %w", step.name, err)
-		}
+	if err := runTemplGenerate(ctx, repoDir); err != nil {
+		return fmt.Errorf("templ generate failed: %w", err)
+	}
+
+	if err := rebuildTailwind(ctx, repoDir, cfg); err != nil {
+		return fmt.Errorf("tailwind rebuild failed: %w", err)
+	}
+
+	if err := runGoBuild(ctx, repoDir, cfg); err != nil {
+		return fmt.Errorf("go build failed: %w", err)
 	}
 
 	return nil
 }
 
 func runBunInstall(ctx context.Context, repoDir string) error {
-	return runCmd(ctx, repoDir, nil, "bun", "install")
+	return runCmd(ctx, repoDir, os.Environ(), "bun", "install")
 }
 
 func runTemplGenerate(ctx context.Context, repoDir string) error {
-	return runCmd(ctx, repoDir, nil, "templ", "generate")
+	return runCmd(ctx, repoDir, os.Environ(), "templ", "generate")
 }
 
-func rebuildTailwind(ctx context.Context, repoDir string) error {
+func rebuildTailwind(ctx context.Context, repoDir string, cfg Config) error {
 	args := []string{
 		"x", "tailwindcss",
-		"-i", "static/css/index.css",
-		"-o", "static/css/out.css",
-		"--content", "./components/**/*",
-		"--content", "./pages/**/*",
-		"--content", "./layouts/**/*",
+		"-i", cfg.TailwindInput,
+		"-o", cfg.TailwindOutput,
 	}
-	if err := runCmd(ctx, repoDir, nil, "bun", args...); err != nil {
+	for _, content := range cfg.TailwindContent {
+		args = append(args, "--content", content)
+	}
+
+	if err := runCmd(ctx, repoDir, os.Environ(), "bun", args...); err != nil {
 		return err
 	}
 
-	outPath := filepath.Join(repoDir, "static/css/out.css")
+	outPath := filepath.Join(repoDir, cfg.TailwindOutput)
 	data, err := os.ReadFile(outPath)
 	if err != nil {
 		return err
@@ -92,16 +116,24 @@ func rebuildTailwind(ctx context.Context, repoDir string) error {
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])[:8]
 
-	pattern := filepath.Join(repoDir, "static/css", "out.*.css")
+	dir := filepath.Dir(outPath)
+	base := filepath.Base(outPath)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	if ext == "" {
+		ext = ""
+	}
+
+	pattern := filepath.Join(dir, fmt.Sprintf("%s.*%s", name, ext))
 	matches, _ := filepath.Glob(pattern)
 	for _, match := range matches {
-		if strings.HasSuffix(match, "out.css") {
+		if match == outPath {
 			continue
 		}
 		_ = os.Remove(match)
 	}
 
-	hashedPath := filepath.Join(repoDir, "static/css", fmt.Sprintf("out.%s.css", hash))
+	hashedPath := filepath.Join(dir, fmt.Sprintf("%s.%s%s", name, hash, ext))
 	if err := os.WriteFile(hashedPath, data, 0o644); err != nil {
 		return err
 	}
@@ -109,23 +141,41 @@ func rebuildTailwind(ctx context.Context, repoDir string) error {
 	return nil
 }
 
-func runGoBuild(ctx context.Context, repoDir string) error {
+func runGoBuild(ctx context.Context, repoDir string, cfg Config) error {
 	env := append(os.Environ(), "GOWORK=off")
-	return runCmd(ctx, repoDir, env, "go", "build", "-o", "datastarui", "main.go")
+	args := []string{"build"}
+	if cfg.Binary != "" {
+		args = append(args, "-o", cfg.Binary)
+	}
+	args = append(args, "main.go")
+	return runCmd(ctx, repoDir, env, "go", args...)
 }
 
-func startServer(ctx context.Context, repoDir string) (*exec.Cmd, error) {
-	binaryPath := filepath.Join(repoDir, "datastarui")
+func startServer(ctx context.Context, repoDir string, cfg Config) (*exec.Cmd, error) {
+	env := os.Environ()
 	var cmd *exec.Cmd
-	if _, err := os.Stat(binaryPath); err == nil {
-		cmd = exec.CommandContext(ctx, binaryPath)
+
+	if len(cfg.ServerCommand) > 0 {
+		cmd = exec.CommandContext(ctx, cfg.ServerCommand[0], cfg.ServerCommand[1:]...)
 	} else {
-		cmd = exec.CommandContext(ctx, "go", "run", ".")
-		cmd.Env = append(os.Environ(), "GOWORK=off")
+		binaryPath := cfg.Binary
+		if binaryPath != "" {
+			binaryPath = filepath.Join(repoDir, binaryPath)
+			if _, err := os.Stat(binaryPath); err == nil {
+				cmd = exec.CommandContext(ctx, binaryPath)
+			}
+		}
+		if cmd == nil {
+			cmd = exec.CommandContext(ctx, "go", "run", ".")
+			env = append(env, "GOWORK=off")
+		}
 	}
+
 	cmd.Dir = repoDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	cmd.Env = env
+
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -152,8 +202,10 @@ func stopServer(cmd *exec.Cmd) {
 func runCmd(ctx context.Context, repoDir string, env []string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = repoDir
-	if env != nil {
+	if len(env) > 0 {
 		cmd.Env = env
+	} else {
+		cmd.Env = os.Environ()
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

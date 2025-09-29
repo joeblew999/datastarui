@@ -20,28 +20,43 @@ See [datastar-ui.com](https://datastar-ui.com) for component demos.
 ### Prerequisites
 
 - [Go 1.24+](https://golang.org/dl/)
-- [Just](https://github.com/casey/just) - command runner
-- [Air](https://github.com/cosmtrek/air) - live reload for Go
-- [templ](https://templ.guide/) - Go templating engine
-- [tailwindcss standalone CLI](https://tailwindcss.com/blog/standalone-cli)
+- [templ](https://templ.guide/) CLI (`brew install templ`)
+- [Bun](https://bun.sh/docs/installation) runtime (`brew install oven-sh/bun/bun`)
+- [Tailwind CSS CLI](https://tailwindcss.com/blog/standalone-cli) (`brew install tailwindcss/tap/tailwindcss`)
 
-### Development Setup
+### Development Setup (Bun-driven)
 
 ```bash
-# start the Tailwind CSS watcher:
-just tailwind
+# install dependencies
+bun install
 
-# start the Go server with live reload:
-just watch
+# regenerate templ output
+templ generate
+
+# rebuild CSS + hashed asset
+bun x tailwindcss -i static/css/index.css -o static/css/out.css \
+  --content "./components/**/*" --content "./pages/**/*" --content "./layouts/**/*"
+HASH=$(shasum -a 256 static/css/out.css | cut -d' ' -f1 | cut -c1-8)
+rm -f static/css/out.*.css
+cp static/css/out.css static/css/out.$HASH.css
+
+# launch the server
+GOWORK=off go run main.go
 ```
 
-see demo site at [http://localhost:4242](http://localhost:4242)
+For a one-shot Playwright validation run:
 
-The development environment will automatically:
+```bash
+GOWORK=off go run ./cmd/playwright -timeout=5m
+```
 
-- ✅ Rebuild Go templates when `.templ` files change
-- ✅ Recompile CSS when Tailwind classes are added/removed
-- ✅ Restart the server when Go code changes
+Automated run (mirrors CI):
+
+```bash
+GOWORK=off go test ./...
+```
+
+The demo is served at [http://localhost:4242](http://localhost:4242).
 
 ## 🏗️ Project Structure
 

@@ -56,6 +56,12 @@ Automated run (mirrors CI):
 GOWORK=off go test ./...
 ```
 
+Quick helper (runs steps 2-4 automatically):
+
+```bash
+GOWORK=off go run ./cmd/codegen -timeout=2m
+```
+
 The demo is served at [http://localhost:4242](http://localhost:4242).
 
 ## 🏗️ Project Structure

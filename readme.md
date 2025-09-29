@@ -28,6 +28,8 @@ See [datastar-ui.com](https://datastar-ui.com) for component demos.
 > Note: legacy `just` targets from upstream were recreated as Go commands (`cmd/codegen` and `cmd/playwright`) so the workflow is self-contained without requiring the Just runner or Docker.
 ### Development Setup (Bun-driven)
 
+> We no longer rely on watcher tooling like Air—the Bun/Go commands are fast enough to rerun after edits.
+
 ```bash
 # install dependencies
 bun install

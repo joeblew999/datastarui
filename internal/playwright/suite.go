@@ -16,20 +16,8 @@ import (
 
 // Run executes the full Bun-based Playwright workflow against the provided repo directory.
 func Run(ctx context.Context, repoDir string) error {
-	steps := []struct {
-		name string
-		run  func(context.Context, string) error
-	}{
-		{"bun install", runBunInstall},
-		{"templ generate", runTemplGenerate},
-		{"tailwind rebuild", rebuildTailwind},
-		{"go build", runGoBuild},
-	}
-
-	for _, step := range steps {
-		if err := step.run(ctx, repoDir); err != nil {
-			return fmt.Errorf("%s failed: %w", step.name, err)
-		}
+	if err := Prepare(ctx, repoDir); err != nil {
+		return err
 	}
 
 	srvCmd, err := startServer(ctx, repoDir)
@@ -48,6 +36,27 @@ func Run(ctx context.Context, repoDir string) error {
 
 	if err := runCmd(ctx, repoDir, nil, "bun", "x", "playwright", "test"); err != nil {
 		return fmt.Errorf("playwright suite failed: %w", err)
+	}
+
+	return nil
+}
+
+// Prepare installs dependencies, regenerates templates, rebuilds Tailwind output, and ensures the Go binary is up to date.
+func Prepare(ctx context.Context, repoDir string) error {
+	steps := []struct {
+		name string
+		run  func(context.Context, string) error
+	}{
+		{"bun install", runBunInstall},
+		{"templ generate", runTemplGenerate},
+		{"tailwind rebuild", rebuildTailwind},
+		{"go build", runGoBuild},
+	}
+
+	for _, step := range steps {
+		if err := step.run(ctx, repoDir); err != nil {
+			return fmt.Errorf("%s failed: %w", step.name, err)
+		}
 	}
 
 	return nil

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_console_messages",
+      "Bash(git checkout:*)",
+      "WebSearch",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "mcp__1__browser_navigate",
+      "Bash(rm:*)",
+      "mcp__1__browser_evaluate",
+      "Bash(go mod:*)",
+      "Bash(go run:*)",
+      "Bash(go work:*)",
+      "Bash(go work use:*)",
+      "Bash(go get:*)",
+      "mcp__playwright__browser_evaluate",
+      "Bash(curl:*)",
+      "Bash(cp:*)",
+      "Bash(done)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "defaultMode": "acceptEdits"
+  }
+}
